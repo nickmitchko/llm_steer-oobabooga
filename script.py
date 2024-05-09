@@ -144,6 +144,7 @@ def ui():
         with gr.Column():
             layer_idx = gr.Number(label="Layer Index", value=20)
             coeff = gr.Number(label="Coefficient", value=0.4)
+            offset = gr.Number(label="Slice Size (0-1)", value=0)
             text = gr.Textbox(label="Steering Text", value="logical")
             add_button = gr.Button("Add Steering Vector")
             add_output = gr.Textbox(label="Add Status")
@@ -152,10 +153,10 @@ def ui():
             get_button = gr.Button("Get Steering Vectors")
             steering_vectors_output = gr.Textbox(label="Steering Vectors")
 
-    def add_steering_vector(layer_idx, coeff, text):
+    def add_steering_vector(layer_idx, coeff, text, offset):
         if shared.steered_model is None:
             shared.steered_model = Steer(shared.model, shared.tokenizer)
-        shared.steered_model.add(layer_idx=int(layer_idx), coeff=float(coeff), text=text)
+        shared.steered_model.add(layer_idx=int(layer_idx), coeff=float(coeff), text=text, try_keep_nr=float(offset))
         shared.model = shared.steered_model.model
         return f"Steering vector added: Layer {layer_idx}, Coefficient {coeff}, Text '{text}'"
 
@@ -171,7 +172,7 @@ def ui():
         else:
             return "No steering vectors found."
 
-    add_button.click(add_steering_vector, inputs=[layer_idx, coeff, text], outputs=[add_output])
+    add_button.click(add_steering_vector, inputs=[layer_idx, coeff, text, offset], outputs=[add_output])
     reset_button.click(reset_steering_vectors)
     get_button.click(get_steering_vectors, outputs=[steering_vectors_output])
     pass
