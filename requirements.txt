@@ -1,1 +1,3 @@
 llm_steer
+lm_eval
+pyswarms
