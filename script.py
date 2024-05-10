@@ -270,6 +270,17 @@ def ui():
             x_max = X_MAX * np.ones(NUM_DIMENSIONS)
             x_min = X_MIN * np.ones(NUM_DIMENSIONS)
             
+            # Edit this to add a number of dimensions that equals NUM_PARTICLES * 3
+            # We need this because each particle should be multi-dimensional based on the number of steering vectors...
+            # So the optimization gets huge when you add lots of steering vectors
+            # and each particle triggers an LM_EVAL
+            # so that makes this process very long.
+            # and possibly even longer than just running a finetune or ablation
+            # But maybe there is a better was to do this
+            # Think.....
+            # Maybe limit the number of particles to 3 and that gives us 9 dimensions? and then 9*5 lm_evals? Wow...
+            # lots to think about, maybe pick a smaller set of questions?
+            # Or let the lm_eval have a limit?
             optimizer = ps.single.GlobalBestPSO(n_particles=5, dimensions=NUM_DIMENSIONS, options=options, bounds=(x_min, x_max))
             
             cost, pos = optimizer.optimize(__swarm_fitness, iters=5)
