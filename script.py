@@ -212,7 +212,7 @@ def ui():
                 # Set the steering vectors, keep the original text
                 add_steering_vector(layer_idx, coeff, vector.text, offset)            
             # Now let's run the evaluation
-            eval = evaluate_task(['medqa'])
+            eval = evaluate_task(['medqa'])['results']
             core_metric = eval['medqa']['agg']
             results[i] = core_metric
             i = i + 1
