@@ -178,15 +178,53 @@ def ui():
         else:
             return "No steering vectors found."
         
-    def evaluate_task():
+        
+    def evaluate_task(tasks: list):
         hf_model = lm_eval.models.huggingface.HFLM(model=shared.model, batch_size=1)
+        results = lm_eval.simple_evaluate( # call simple_evaluate
+            model=hf_model,
+            tasks=tasks,
+            num_fewshot=0,
+        )
+        return results
+        # ... I don't know what the results dictionary contains....
 
+    def __swarm_fitness(x):
+        # TODO: change this to make it the size of the number of particles
+        results = np.ndarray(x.shape[0])
+        i = 0
+        for particle in x:
+            steering_vectors = shared.steered_model.get_all()
+            # reset steering
+            reset_steering_vectors()
+            # add steering with parameteres in x[]
+            for vector in steering_vectors:
+                # Bounds, important to leave the bounding between -1 > 1 for weight
+                # weight bounds : [-1,1] 
+                # layer bounds  : [0, MAX_LAYER]
+                # try_leep_nr   : [0, 1]
+                # Scale layers to an integer between 1 and max layer number
+                layer_idx = int(particle[0] * (shared.model.config.num_hidden_layers - 1))
+                # Here we have the particle coeff, already properly scaled to [0,1] but we need [-1,1]
+                coeff = float((2 * particle[1]) - 1)
+                # In our layer offset, we are properly scaled 0, 1 and don't need any adjustments
+                offset = float(particle[2])
+                # Set the steering vectors, keep the original text
+                add_steering_vector(layer_idx, coeff, vector.text, offset)            
+            # Now let's run the evaluation
+            eval = evaluate_task(['medqa'])
+            core_metric = eval['medqa']['agg']
+            results[i] = core_metric
+            i = i + 1
+        return results
+            
+        
         
     # Method to swarm optimize a set of vectors added into the steered model against
     # a known lm_eval benchmark
     def optimize_steering_to_eval():
         if shared.steered_model is not None:
-            steering_vectors = shared.steered_model.get_all()
+            # steering_vectors = shared.steered_model.get_all()
             
             # Swarm Loop:
             # 1. Add Steering Vectors
@@ -195,14 +233,28 @@ def ui():
             #    set the steering vectors to the weights of the particles and run lm_eval
             # 4. Reset Steering Vectors
             # 5. After enough iterations, return the optimal vectors
-
-            options = {
-                ''
-            }
-
-            optimizer = ps.single.GlobalBestPSO(n_particles=5, dimensions=3, options=options)
             
-
+            # SWARM OPTIONS -- don't know what this does
+            options = {'c1': 0.5, 'c2': 0.3, 'w': 0.9}
+            # Bounds, important to leave the bounding between -1 > 1 for weight
+            # weight bounds : [-1,1] 
+            # layer bounds  : [0, MAX_LAYER]
+            # try_leep_nr   : [0, 1]
+            # bounds = ?
+            # https://hf.co/chat/r/mz1tRP0
+            NUM_DIMENSIONS = 3
+            X_MAX = 1
+            X_MIN = 0
+            
+            x_max = X_MAX * np.ones(NUM_DIMENSIONS)
+            x_min = X_MIN * np.ones(NUM_DIMENSIONS)
+            
+            optimizer = ps.single.GlobalBestPSO(n_particles=5, dimensions=NUM_DIMENSIONS, options=options, bounds=(x_min, x_max))
+            
+            cost, pos = optimizer.optimize(__swarm_fitness, iters=5)
+            print(cost)
+            print(pos)
+            return str(pos)
         else:
             return "Please add some steering vectors for optimization"
     
