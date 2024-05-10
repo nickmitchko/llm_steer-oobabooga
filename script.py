@@ -218,17 +218,17 @@ def ui():
             # reset steering
             reset_steering_vectors()
             # add steering with parameteres in x[]
-            for vector in steering_vectors:
+            for n, vector in enumerate(steering_vectors):
                 # Bounds, important to leave the bounding between -1 > 1 for weight
                 # weight bounds : [-1,1] 
                 # layer bounds  : [0, MAX_LAYER]
                 # try_leep_nr   : [0, 1]
                 # Scale layers to an integer between 1 and max layer number
-                layer_idx = __scale_layeridx(particle[0])
+                layer_idx = __scale_layeridx(particle[0 + n])
                 # Here we have the particle coeff, already properly scaled to [0,1] but we need [-1,1]
-                coeff = __scale_coeff(particle[1])
+                coeff = __scale_coeff(particle[1 + n])
                 # In our layer offset, we are properly scaled 0, 1 and don't need any adjustments
-                offset = float(particle[2])
+                offset = float(particle[2 + n])
                 # Set the steering vectors, keep the original text
                 add_steering_vector(layer_idx, coeff, vector.text, offset)            
             # Now let's run the evaluation
@@ -245,7 +245,7 @@ def ui():
     # a known lm_eval benchmark
     def optimize_steering_to_eval():
         if shared.steered_model is not None:
-            # steering_vectors = shared.steered_model.get_all()
+            steering_vectors_num = len(shared.steered_model.get_all())
             
             # Swarm Loop:
             # 1. Add Steering Vectors
@@ -263,14 +263,15 @@ def ui():
             # try_leep_nr   : [0, 1]
             # bounds = ?
             # https://hf.co/chat/r/mz1tRP0
-            NUM_DIMENSIONS = 3
+            NUM_PARTICLES = 3
+            NUM_DIMENSIONS = 3 * steering_vectors_num
             X_MAX = 1
             X_MIN = 0
             
             x_max = X_MAX * np.ones(NUM_DIMENSIONS)
             x_min = X_MIN * np.ones(NUM_DIMENSIONS)
             
-            # Edit this to add a number of dimensions that equals NUM_PARTICLES * 3
+            # Edit this to add a number of dimensions that equals steering_vectors_num * 3
             # We need this because each particle should be multi-dimensional based on the number of steering vectors...
             # So the optimization gets huge when you add lots of steering vectors
             # and each particle triggers an LM_EVAL
@@ -281,7 +282,7 @@ def ui():
             # Maybe limit the number of particles to 3 and that gives us 9 dimensions? and then 9*5 lm_evals? Wow...
             # lots to think about, maybe pick a smaller set of questions?
             # Or let the lm_eval have a limit?
-            optimizer = ps.single.GlobalBestPSO(n_particles=5, dimensions=NUM_DIMENSIONS, options=options, bounds=(x_min, x_max))
+            optimizer = ps.single.GlobalBestPSO(n_particles=NUM_PARTICLES, dimensions=NUM_DIMENSIONS, options=options, bounds=(x_min, x_max))
             
             cost, pos = optimizer.optimize(__swarm_fitness, iters=5)
             print(cost)
