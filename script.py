@@ -189,11 +189,30 @@ def ui():
         )
         return results
         # ... I don't know what the results dictionary contains....
+        
+        
+    def __scale_layeridx(value):
+        # Scale layers to an integer between 1 and max layer number
+        layer_idx = int(value * (shared.model.config.num_hidden_layers - 1))
+        return layer_idx
+    
+    def __scale_coeff(value):
+        # Here we have the particle coeff, already properly scaled to [0,1] but we need [-1,1]
+        coeff = float((2 * value) - 1)
+        return coeff
+    
+    def __scale_particle(particle):
+        scaled_particle = particle
+        scaled_particle[0] = __scale_layeridx(particle[0])
+        scaled_particle[1] = __scale_coeff(particle[1])
+        scaled_particle[2] = float(particle[2])
+        return scaled_particle
 
     def __swarm_fitness(x):
         # TODO: change this to make it the size of the number of particles
         results = np.ndarray(x.shape[0])
         i = 0
+        # bad logic, we are setting the same coefficents for all particles...
         for particle in x:
             steering_vectors = shared.steered_model.get_all()
             # reset steering
@@ -205,9 +224,9 @@ def ui():
                 # layer bounds  : [0, MAX_LAYER]
                 # try_leep_nr   : [0, 1]
                 # Scale layers to an integer between 1 and max layer number
-                layer_idx = int(particle[0] * (shared.model.config.num_hidden_layers - 1))
+                layer_idx = __scale_layeridx(particle[0])
                 # Here we have the particle coeff, already properly scaled to [0,1] but we need [-1,1]
-                coeff = float((2 * particle[1]) - 1)
+                coeff = __scale_coeff(particle[1])
                 # In our layer offset, we are properly scaled 0, 1 and don't need any adjustments
                 offset = float(particle[2])
                 # Set the steering vectors, keep the original text
@@ -215,7 +234,8 @@ def ui():
             # Now let's run the evaluation
             eval = evaluate_task(['medqa'])['results']
             core_metric = eval['medqa']['agg']
-            results[i] = core_metric
+            # Since this is our cost function we need it to show the error (1 - score) since score is 0-1 ( ie, .93 would have an error of 0.07)
+            results[i] = (1 - core_metric)
             i = i + 1
         return results
             
@@ -255,7 +275,8 @@ def ui():
             cost, pos = optimizer.optimize(__swarm_fitness, iters=5)
             print(cost)
             print(pos)
-            return str(pos)
+            # print out the scaled particle
+            return str(__scale_particle(pos))
         else:
             return "Please add some steering vectors for optimization"
     
