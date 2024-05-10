@@ -7,11 +7,17 @@ functions are declared in the same order that they are called at
 generation time.
 """
 
+import lm_eval.models
+import lm_eval.tasks
 import gradio as gr
 import torch
 from transformers import LogitsProcessor
 from llm_steer import Steer
-
+# Import lm_eval, an evaluator for language models we will optimzie using our steering vectors
+import lm_eval
+# Import pyswarms, a particle swarming library we can optimize vector positioning for
+import numpy as np
+import pyswarms as ps
 
 from modules import chat, shared
 from modules.text_generation import (
@@ -171,6 +177,35 @@ def ui():
             return str(steering_vectors)
         else:
             return "No steering vectors found."
+        
+    def evaluate_task():
+        hf_model = lm_eval.models.huggingface.HFLM(model=shared.model, batch_size=1)
+
+        
+    # Method to swarm optimize a set of vectors added into the steered model against
+    # a known lm_eval benchmark
+    def optimize_steering_to_eval():
+        if shared.steered_model is not None:
+            steering_vectors = shared.steered_model.get_all()
+            
+            # Swarm Loop:
+            # 1. Add Steering Vectors
+            # 2. Loop through the fitness evolution
+            # 3. At each step, when the particles are set, for each fitness function
+            #    set the steering vectors to the weights of the particles and run lm_eval
+            # 4. Reset Steering Vectors
+            # 5. After enough iterations, return the optimal vectors
+
+            options = {
+                ''
+            }
+
+            optimizer = ps.single.GlobalBestPSO(n_particles=5, dimensions=3, options=options)
+            
+
+        else:
+            return "Please add some steering vectors for optimization"
+    
 
     add_button.click(add_steering_vector, inputs=[layer_idx, coeff, text, offset], outputs=[add_output])
     reset_button.click(reset_steering_vectors)
