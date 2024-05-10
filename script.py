@@ -155,6 +155,7 @@ def ui():
             add_button = gr.Button("Add Steering Vector")
             add_output = gr.Textbox(label="Add Status")
         with gr.Column():
+            optimize_button = gr.Button("Optimize Vectors")
             reset_button = gr.Button("Reset Steering Vectors")
             get_button = gr.Button("Get Steering Vectors")
             steering_vectors_output = gr.Textbox(label="Steering Vectors")
@@ -260,6 +261,7 @@ def ui():
     
 
     add_button.click(add_steering_vector, inputs=[layer_idx, coeff, text, offset], outputs=[add_output])
+    optimize_button.click(optimize_steering_to_eval, outputs=[add_output])
     reset_button.click(reset_steering_vectors)
     get_button.click(get_steering_vectors, outputs=[steering_vectors_output])
     pass
