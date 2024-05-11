@@ -13,10 +13,12 @@ Note: This extension only works for models loaded using the "transformers" backe
   ![Screenshot from 2024-03-20 16-29-03.png](https://raw.githubusercontent.com/Hellisotherpeople/llm_steer-oobabooga/main/Screenshot%20from%202024-03-20%2016-29-03.png)
 
 
+
+
 # Usage
 
 There are three values: 
-
+![Optimization Run](image.png)
 **Layer Index (int)**: 
 Which layer should the steering vector be inserted into? 
 
