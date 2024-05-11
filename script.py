@@ -146,16 +146,25 @@ def ui():
     To learn about gradio components, check out the docs:
     https://gradio.app/docs/
     """
+    
+    task_manager = None
+    
     with gr.Row():
         with gr.Column():
+            # with gr.Row():
             layer_idx = gr.Number(label="Layer Index", value=20)
             coeff = gr.Number(label="Coefficient", value=0.4)
             offset = gr.Number(label="Slice Size (0-1)", value=0)
             text = gr.Textbox(label="Steering Text", value="logical")
             add_button = gr.Button("Add Steering Vector")
+            # with gr.Row():
             add_output = gr.Textbox(label="Add Status")
         with gr.Column():
+            # with gr.Row():
             optimize_button = gr.Button("Optimize Vectors")
+            optimize_particles = gr.Slider(label="Number of Particles", value=3, min=1, max=10, step=1)
+            optimize_iterations = gr.Slider(label="Number of Iterations", value=5, min=1, max=10, step=1)
+            # with gr.Row():
             reset_button = gr.Button("Reset Steering Vectors")
             get_button = gr.Button("Get Steering Vectors")
             steering_vectors_output = gr.Textbox(label="Steering Vectors")
@@ -163,7 +172,7 @@ def ui():
     def add_steering_vector(layer_idx, coeff, text, offset):
         if shared.steered_model is None:
             shared.steered_model = Steer(shared.model, shared.tokenizer)
-        shared.steered_model.add(layer_idx=int(layer_idx), coeff=float(coeff), text=text, try_keep_nr=float(offset))
+        shared.steered_model.add(layer_idx=int(layer_idx), coeff=float(coeff), text=text, try_keep_nr=int(offset))
         shared.model = shared.steered_model.model
         return f"Steering vector added: Layer {layer_idx}, Coefficient {coeff}, Text '{text}'"
 
@@ -181,11 +190,12 @@ def ui():
         
         
     def evaluate_task(tasks: list):
-        hf_model = lm_eval.models.huggingface.HFLM(model=shared.model, batch_size=1)
+        hf_model = lm_eval.models.huggingface.HFLM(pretrained=shared.model, batch_size=1)
         results = lm_eval.simple_evaluate( # call simple_evaluate
             model=hf_model,
             tasks=tasks,
             num_fewshot=0,
+            task_manager=task_manager
         )
         return results
         # ... I don't know what the results dictionary contains....
@@ -209,33 +219,49 @@ def ui():
         return scaled_particle
 
     def __swarm_fitness(x):
+        task_manager = lm_eval.tasks.TaskManager(include_path="/media/nmitchko/NVME/text-generation-webui/venv/lib/python3.11/site-packages/lm_eval/tasks/medqa/")
         # TODO: change this to make it the size of the number of particles
         results = np.ndarray(x.shape[0])
         i = 0
+        print(x)
         # bad logic, we are setting the same coefficents for all particles...
         for particle in x:
             steering_vectors = shared.steered_model.get_all()
+            print(steering_vectors)
             # reset steering
             reset_steering_vectors()
             # add steering with parameteres in x[]
-            for n, vector in enumerate(steering_vectors):
+            n = 0
+            for vector in steering_vectors:
                 # Bounds, important to leave the bounding between -1 > 1 for weight
                 # weight bounds : [-1,1] 
                 # layer bounds  : [0, MAX_LAYER]
                 # try_leep_nr   : [0, 1]
                 # Scale layers to an integer between 1 and max layer number
-                layer_idx = __scale_layeridx(particle[0 + n])
+                layer_idx_inner = __scale_layeridx(particle[0 + n * 3])
                 # Here we have the particle coeff, already properly scaled to [0,1] but we need [-1,1]
-                coeff = __scale_coeff(particle[1 + n])
+                coeff_inner = __scale_coeff(particle[1 + n * 3])
                 # In our layer offset, we are properly scaled 0, 1 and don't need any adjustments
-                offset = float(particle[2 + n])
+                # offset_inner = float(particle[2 + n * 3])
+                offset_inner = int(0)
                 # Set the steering vectors, keep the original text
-                add_steering_vector(layer_idx, coeff, vector.text, offset)            
+                # print(vector)
+                # print(offset)
+                # print(coeff)
+                # print(layer_idx)
+                add_steering_vector(layer_idx_inner, coeff_inner, vector['text'], offset_inner)        
+                n = n + 1    
             # Now let's run the evaluation
-            eval = evaluate_task(['medqa'])['results']
-            core_metric = eval['medqa']['agg']
+            # TODO: Let this be a user parameter and evaluation metric chooser
+            # TODO: Add progress bar tracking https://www.gradio.app/guides/key-features#progress-bars
+            evaluation = evaluate_task(['pubmedqa'])
+            # print(evaluation['results']['pubmedqa'])
+            core_metric = evaluation['results']['pubmedqa']
+            # import json
+            # with open('results.json', 'w') as outfile:
+            #     json.dump(core_metric, outfile)
             # Since this is our cost function we need it to show the error (1 - score) since score is 0-1 ( ie, .93 would have an error of 0.07)
-            results[i] = (1 - core_metric)
+            results[i] = (1 - core_metric['acc,none'])
             i = i + 1
         return results
             
@@ -243,7 +269,7 @@ def ui():
         
     # Method to swarm optimize a set of vectors added into the steered model against
     # a known lm_eval benchmark
-    def optimize_steering_to_eval():
+    def optimize_steering_to_eval(optimize_particles=3, optimize_iterations=5, progress=gr.Progress(track_tqdm=True)):
         if shared.steered_model is not None:
             steering_vectors_num = len(shared.steered_model.get_all())
             
@@ -263,7 +289,7 @@ def ui():
             # try_leep_nr   : [0, 1]
             # bounds = ?
             # https://hf.co/chat/r/mz1tRP0
-            NUM_PARTICLES = 3
+            NUM_PARTICLES = optimize_particles
             NUM_DIMENSIONS = 3 * steering_vectors_num
             X_MAX = 1
             X_MIN = 0
@@ -284,17 +310,15 @@ def ui():
             # Or let the lm_eval have a limit?
             optimizer = ps.single.GlobalBestPSO(n_particles=NUM_PARTICLES, dimensions=NUM_DIMENSIONS, options=options, bounds=(x_min, x_max))
             
-            cost, pos = optimizer.optimize(__swarm_fitness, iters=5)
-            print(cost)
-            print(pos)
+            cost, pos = optimizer.optimize(__swarm_fitness, iters=optimize_iterations)
             # print out the scaled particle
-            return str(__scale_particle(pos))
+            return str(pos)
         else:
             return "Please add some steering vectors for optimization"
     
 
     add_button.click(add_steering_vector, inputs=[layer_idx, coeff, text, offset], outputs=[add_output])
-    optimize_button.click(optimize_steering_to_eval, outputs=[add_output])
+    optimize_button.click(optimize_steering_to_eval, inputs=[optimize_particles, optimize_iterations], outputs=[add_output])
     reset_button.click(reset_steering_vectors)
     get_button.click(get_steering_vectors, outputs=[steering_vectors_output])
     pass
