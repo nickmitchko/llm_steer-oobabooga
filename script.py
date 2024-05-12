@@ -148,7 +148,9 @@ def ui():
     """
     
     task_manager = None
-    
+    # TODO: Add in a setting for the batch size
+    # TODO: Add in a setting and handling for the other parameters
+    # TODO: Add in a setting for the definion of the forward functions
     with gr.Row():
         with gr.Column():
             # with gr.Row():
@@ -166,8 +168,17 @@ def ui():
             optimize_iterations = gr.Slider(label="Number of Iterations", value=5, min=1, max=10, step=1)
             # with gr.Row():
             reset_button = gr.Button("Reset Steering Vectors")
+            run_benchmark = gr.Button("Run Benchmark")
+            benchmark_name = gr.Textbox(label="Benchmark Name")
+            # TODO: make benchmarks runnable via single button
+            # TODO: make benchmarks selectable via dropdown
+            # TODO: make output of benchmarks output in a nice table
             get_button = gr.Button("Get Steering Vectors")
             steering_vectors_output = gr.Textbox(label="Steering Vectors")
+    # with gr.Row():
+    #     with gr.Column():
+    #         gr.Label("Steering Vectors")
+            
 
     def add_steering_vector(layer_idx, coeff, text, offset):
         if shared.steered_model is None:
@@ -190,7 +201,7 @@ def ui():
         
         
     def evaluate_task(tasks: list):
-        hf_model = lm_eval.models.huggingface.HFLM(pretrained=shared.model, batch_size=1)
+        hf_model = lm_eval.models.huggingface.HFLM(pretrained=shared.model, batch_size=2)
         results = lm_eval.simple_evaluate( # call simple_evaluate
             model=hf_model,
             tasks=tasks,
@@ -213,9 +224,10 @@ def ui():
     
     def __scale_particle(particle):
         scaled_particle = particle
-        scaled_particle[0] = __scale_layeridx(particle[0])
-        scaled_particle[1] = __scale_coeff(particle[1])
-        scaled_particle[2] = float(particle[2])
+        for i in range(0, particle.shape[0], 3):
+            scaled_particle[0] = __scale_layeridx(particle[0 + n])
+            scaled_particle[1] = __scale_coeff(particle[1 + n])
+            scaled_particle[2] = float(particle[2 + n])
         return scaled_particle
 
     def __swarm_fitness(x):
@@ -312,7 +324,27 @@ def ui():
             
             cost, pos = optimizer.optimize(__swarm_fitness, iters=optimize_iterations)
             # print out the scaled particle
-            return str(pos)
+            scaled_particle = str(__scale_particle(pos))
+            # Build explanation of optimization
+            steering_vectors = shared.steered_model.get_all()
+            # print(steering_vectors)
+            # reset steering
+            reset_steering_vectors()
+            # add steering with parameteres in x[]
+            particle_explanation = f"Benchmark Optimum Found: {1 - cost} \n"
+            n = 0
+            for vector in steering_vectors:
+                layer = scaled_particle[n * 3 + 0]
+                coeff = scaled_particle[n * 3 + 1]
+                offset_inner = int(0)
+                # Build Explanation of optimization
+                particle_explanation += f"Layer: {layer} \t Coeff: {coeff} \t text: {vector['text']} \n"
+                # reset the vectors to the best optimization
+                add_steering_vector(layer, coeff, vector['text'], offset_inner)
+                # increment the counter
+                n = n + 1
+                
+            return particle_explanation
         else:
             return "Please add some steering vectors for optimization"
     
