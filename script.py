@@ -166,6 +166,7 @@ def ui():
             optimize_button = gr.Button("Optimize Vectors")
             optimize_particles = gr.Slider(label="Number of Particles", value=3, min=1, max=10, step=1)
             optimize_iterations = gr.Slider(label="Number of Iterations", value=5, min=1, max=10, step=1)
+            optimize_batch_size = gr.Slider(label="LM_eval Batch Size", value=1, min=1, max=128, step=1)
             # with gr.Row():
             reset_button = gr.Button("Reset Steering Vectors")
             run_benchmark = gr.Button("Run Benchmark")
@@ -200,8 +201,9 @@ def ui():
             return "No steering vectors found."
         
         
-    def evaluate_task(tasks: list):
-        hf_model = lm_eval.models.huggingface.HFLM(pretrained=shared.model, batch_size=2)
+    def evaluate_task(tasks: list, optimize_batch_size: int):
+        # TODO: configurable batch size
+        hf_model = lm_eval.models.huggingface.HFLM(pretrained=shared.model, batch_size=optimize_batch_size)
         results = lm_eval.simple_evaluate( # call simple_evaluate
             model=hf_model,
             tasks=tasks,
@@ -224,13 +226,13 @@ def ui():
     
     def __scale_particle(particle):
         scaled_particle = particle
-        for i in range(0, particle.shape[0], 3):
-            scaled_particle[0] = __scale_layeridx(particle[0 + n])
-            scaled_particle[1] = __scale_coeff(particle[1 + n])
-            scaled_particle[2] = float(particle[2 + n])
+        for n in range(0, particle.shape[0], 3):
+            scaled_particle[0 + n] = __scale_layeridx(particle[0 + n])
+            scaled_particle[1 + n] = __scale_coeff(particle[1 + n])
+            scaled_particle[2 + n] = float(particle[2 + n])
         return scaled_particle
 
-    def __swarm_fitness(x):
+    def __swarm_fitness(x, optimize_batch_size=1):
         task_manager = lm_eval.tasks.TaskManager(include_path="/media/nmitchko/NVME/text-generation-webui/venv/lib/python3.11/site-packages/lm_eval/tasks/medqa/")
         # TODO: change this to make it the size of the number of particles
         results = np.ndarray(x.shape[0])
@@ -266,7 +268,7 @@ def ui():
             # Now let's run the evaluation
             # TODO: Let this be a user parameter and evaluation metric chooser
             # TODO: Add progress bar tracking https://www.gradio.app/guides/key-features#progress-bars
-            evaluation = evaluate_task(['pubmedqa'])
+            evaluation = evaluate_task(['pubmedqa'], optimize_batch_size=optimize_batch_size)
             # print(evaluation['results']['pubmedqa'])
             core_metric = evaluation['results']['pubmedqa']
             # import json
@@ -281,7 +283,7 @@ def ui():
         
     # Method to swarm optimize a set of vectors added into the steered model against
     # a known lm_eval benchmark
-    def optimize_steering_to_eval(optimize_particles=3, optimize_iterations=5, progress=gr.Progress(track_tqdm=True)):
+    def optimize_steering_to_eval(optimize_particles=3, optimize_iterations=5,optimize_batch_size=1, progress=gr.Progress(track_tqdm=True)):
         if shared.steered_model is not None:
             steering_vectors_num = len(shared.steered_model.get_all())
             
@@ -294,6 +296,7 @@ def ui():
             # 5. After enough iterations, return the optimal vectors
             
             # SWARM OPTIONS -- don't know what this does
+            # TODO: figure out these options and make them betterq
             options = {'c1': 0.5, 'c2': 0.3, 'w': 0.9}
             # Bounds, important to leave the bounding between -1 > 1 for weight
             # weight bounds : [-1,1] 
@@ -331,16 +334,16 @@ def ui():
             # reset steering
             reset_steering_vectors()
             # add steering with parameteres in x[]
-            particle_explanation = f"Benchmark Optimum Found: {1 - cost} \n"
+            particle_explanation = f"Benchmark Optimum Found: {1 - cost} \n {str(scaled_particle)} \n"
             n = 0
             for vector in steering_vectors:
-                layer = scaled_particle[n * 3 + 0]
-                coeff = scaled_particle[n * 3 + 1]
+                layer = scaled_particle[0 + n * 3]
+                coeff = scaled_particle[1 + n * 3]
                 offset_inner = int(0)
                 # Build Explanation of optimization
                 particle_explanation += f"Layer: {layer} \t Coeff: {coeff} \t text: {vector['text']} \n"
                 # reset the vectors to the best optimization
-                add_steering_vector(layer, coeff, vector['text'], offset_inner)
+                # add_steering_vector(layer, coeff, vector['text'], offset_inner)
                 # increment the counter
                 n = n + 1
                 
@@ -350,7 +353,7 @@ def ui():
     
 
     add_button.click(add_steering_vector, inputs=[layer_idx, coeff, text, offset], outputs=[add_output])
-    optimize_button.click(optimize_steering_to_eval, inputs=[optimize_particles, optimize_iterations], outputs=[add_output])
+    optimize_button.click(optimize_steering_to_eval, inputs=[optimize_particles, optimize_iterations, optimize_batch_size], outputs=[add_output])
     reset_button.click(reset_steering_vectors)
     get_button.click(get_steering_vectors, outputs=[steering_vectors_output])
     pass
